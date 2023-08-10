@@ -1,0 +1,145 @@
+import os
+import pandas as pd
+import numpy as np
+import warnings
+import datetime as dt
+
+warnings.filterwarnings('ignore')
+
+os.chdir(r'D:\课\数据可视化\机场')
+flights = pd.read_csv('flights.csv')
+weather = pd.read_csv('weather时间标准化.csv')
+flights = pd.read_csv('flights时间标准化.csv')
+
+# 1.找出满足以下条件的所有航班并分别统计满足条件航班的数量
+# a.到达延误2小时或更多的航班（不考虑取消航班）
+df1_a = flights[(flights['arr_delay'] >= 120)]
+# df_a = flights[['tailnum']][(flights['arr_delay'] >= 120)]
+
+# b.飞往休斯顿（IAH机场或HOU机场）的航班
+df1_b = flights[(flights['dest'] == 'HOU') | (flights['dest'] == 'IAH')]
+
+# c.由联合航空（United）、美利坚航空（American）或三角洲航空（Delta）运营的航班
+df1_c = flights[(flights['carrier'] == 'UA') | (flights['carrier'] == 'AA') | (flights['carrier'] == 'DL ')]
+
+# d.到达延误超过2小时，但出发时间没有延误的航班（不考虑取消航班）
+df1_d = flights[(flights['arr_delay'] >= 120) & (flights['dep_delay'] == 0)]
+
+# e.延误至少1小时，但飞行过程弥补回30分钟的航班（不考虑取消航班）
+df1_e = flights[(flights['arr_delay'] >= 60) & (flights['dep_delay'] - flights['arr_delay'] >= 30)]
+
+# f.夏季（7 月、8 月和 9 月）出发的航班（不考虑取消航班）
+df1_f = flights[(flights['dep_ymdh'] > dt.datetime(2013, 7, 1).strftime('%Y-%m-%d'))
+                & (flights['dep_ymdh'] < dt.datetime(2013, 10, 1).strftime('%Y-%m-%d'))]
+print(df1_f.iloc[:, 0:22])
+# g.夏季（7 月、8 月和 9 月）到达的航班（不考虑取消航班）
+df1_g = flights[(flights['arr_ymdh'] > dt.datetime(2013, 7, 1).strftime('%Y-%m-%d'))
+                & (flights['arr_ymdh'] < dt.datetime(2013, 10, 1).strftime('%Y-%m-%d'))]
+df1_g
+# 2.有人认为飞机和航空公司之间存在着某种从属关系，也就是说每架飞机都属于一个航空公司。利用数据判断这个说法是否正确
+data2 = flights
+data2['dup'] = data2.duplicated(['tailnum', 'carrier'])  # 飞机和航空都一样的去重，重复的只保留第一个，False代表唯一，True代表重复
+df2_a = data2[data2['dup'] == False]  # 对飞机和公司同时去重后无重复的情况
+df2_a['tail_dup'] = df2_a.duplicated(['tailnum'])  # 在上述情况下加一列标识（对飞机去重），False表明飞机在表中唯一，True反之
+df2_b = df2_a[['tailnum', 'carrier']][df2_a['tail_dup'] == True]  # 筛选飞机不唯一的飞机和公司
+df2_b.dropna(inplace=True)
+df2_b.shape[0]
+print(df2_b.iloc[:, 0])
+
+# 3.找出至少有两个航空公司值飞的所有目的地。按照值飞这些目的地航班个数对航空公司进行排名，列出排名前五的航空公司和对应的航班个数
+data3 = flights
+data3['count'] = pd.DataFrame(np.ones(data3.shape[0]))
+data3 = data3[['carrier', 'dest', 'count']]
+df3_dest = data3.groupby('dest')  # 按照dest进行分组
+
+l = []
+for index, data3 in df3_dest:
+    if len(data3['carrier'].unique()) >= 2:
+        count = data3.groupby('carrier').sum()
+        count = count.sort_values('count', ascending=False)
+        l.append((index, list(count.index)))
+l = pd.DataFrame(l)
+print(l.iloc[:5])
+
+# 4.寻找出发时出发地气温和到达时出发地气温相差最大的航班，找出排名前五的航班号和对应温差（不考虑取消航班）
+Data = flights
+# Data = Data.sample(frac=0.001)
+Data['dep_ymdh'] = ''
+Data['arr_ymdh'] = ''
+Data.isnull().sum()
+Data = Data[Data['dep_time'].notna()]
+Data = Data[Data['arr_time'].notna()]
+Data = Data[Data['air_time'].notna()]
+Data['index'] = range(len(Data))
+Data = Data.set_index('index')
+Data.to_csv('test.csv')
+
+for i in range(0, len(Data)):
+    if int(Data['dep_time'][i]) == 2400:
+        Data['dep_time'][i] = 2359
+
+for i in range(0, len(Data)):
+    Data['dep_ymdh'][i] = (dt.datetime(Data['year'][i], Data['month'][i], Data['day'][i],
+                                       int(Data['dep_time'][i] / 100), 0, 0))
+    Data['arr_ymdh'][i] = ((dt.datetime(Data['year'][i], Data['month'][i], Data['day'][i],
+                                        int(Data['dep_time'][i] / 100), int(Data['dep_time'][i] % 100), 0))
+                           + dt.timedelta(minutes=Data['air_time'][i])).strftime('%Y-%m-%d %H:00:00')
+
+# for i in range(0, len(Data)):
+#     Data['dep_ymdh'][i] = (dt.datetime(Data['year'][i], Data['month'][i], Data['day'][i],
+#                                        int(Data['dep_time'][i]/100), int(Data['dep_time'][i] % 100), 0)).strftime('%Y-%m-%d %H:00:00')
+
+Data.to_csv('flights时间标准化.csv')
+Data = pd.read_csv('flights时间标准化.csv')
+
+weather['ymdh'] = ''
+for i in range(0, len(weather)):
+    weather['ymdh'][i] = dt.datetime(int(weather['year'][i]), int(weather['month'][i]), int(weather['day'][i]),
+                                     int(weather['hour'][i]))
+weather.to_csv('weather时间标准化.csv')
+
+flights = Data
+flights = pd.read_csv('flight_HW2.csv')
+flights = pd.read_csv('flights时间标准化.csv')
+weather = pd.read_csv('weather时间标准化.csv')
+data_1 = flights[['tailnum', 'origin', 'dep_ymdh']]
+data_2 = flights[['tailnum', 'origin', 'arr_ymdh']]
+weather = weather[['origin', 'ymdh', 'temp']]
+
+dep = pd.merge(data_1, weather, left_on=['origin', 'dep_ymdh'], right_on=['origin', 'ymdh'], how='left')
+arr = pd.merge(data_2, weather, left_on=['origin', 'arr_ymdh'], right_on=['origin', 'ymdh'], how='left')
+concat = pd.merge(dep, arr, left_index=True, right_index=True, how='left')
+concat['minus'] = abs(concat['temp_x'] - concat['temp_y'])
+concat = concat.sort_values('minus', ascending=False)
+print(concat[['tailnum_x', 'minus']].iloc[:5])
+
+# 5.计算每架飞机在第一次延误超过1小时前的飞行次数（不考虑航班取消的情况），并计算其次数的平均值和标准差
+arr1 = flights[flights['arr_delay'] >= 60]  # 从arr_delay已有数据中选择延误大于1小时的
+arr1_na = flights[(flights['arr_delay'].isnull())]
+arr1_na = arr1_na[arr1_na['arr_time'] - arr1_na['sched_arr_time'] >= 100]  # 从arr_delay缺失数据汇总选择延误大于1小时的
+arr1_all = pd.concat((arr1, arr1_na), axis=0)  # 整合延误>1小时的数据
+
+arr1_all['is_duplicate'] = arr1_all.duplicated(['tailnum'])
+tail_list = arr1_all[arr1_all['is_duplicate'] == False]  # 从所有延误一小时的航班中寻找飞机第一次延误1小时的航班
+tail_list_date = tail_list[['tailnum', 'time_hour']]  # 仅保存飞机尾号与航班日期信息
+expand_list = pd.merge(flights, tail_list_date, on='tailnum', how='left')  # 将飞机尾号与航班日期与左连接
+tail_num = expand_list[expand_list['time_hour_x'] < expand_list['time_hour_y']]  # 寻找出发时间在一次延误时间之前的航班
+q5 = pd.DataFrame(tail_num.loc[:, 'tailnum'].value_counts())  # 统计每个航班出现次数
+print(q5)
+print(q5['tailnum'].mean())
+print(q5['tailnum'].std())
+
+# import os
+# import pandas as pd
+# import warnings
+# import datetime as dt
+#
+# warnings.filterwarnings('ignore')
+# os.chdir(r'D:\课\数据可视化\机场')
+# flights = pd.read_csv('flights.csv')
+# Data['dep_ymdh'][195325] = (dt.datetime(Data['year'][195325], Data['month'][195325], Data['day'][195325],
+#                                         int(Data['dep_time'][195325] / 100), int(Data['dep_time'][195325] % 100), 0))
+# Data['arr_ymdh'][195325] = (Data['dep_ymdh'][195325] + dt.timedelta(minutes=int(Data['air_time'][195325]))).strftime(
+#     '%Y-%m-%d %H:00:00')
+# print(Data['dep_ymdh'][195325])
+# print(Data['arr_ymdh'][195325])
